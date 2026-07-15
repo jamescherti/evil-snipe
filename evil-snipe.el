@@ -1,4 +1,4 @@
-;;; evil-snipe.el --- emulate vim-sneak & vim-seek  -*- lexical-binding: t; -*-
+;;; evil-snipe.el --- Emulate vim-sneak & vim-seek  -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2014-20 Henrik Lissner
 ;;
@@ -7,7 +7,7 @@
 ;; Created: December 5, 2014
 ;; Modified: August 21, 2023
 ;; Version: 2.1.3
-;; Keywords: emulation, vim, evil, sneak, seek
+;; Keywords: convenience, emulations, vim, evil, sneak, seek
 ;; Homepage: https://github.com/hlissner/evil-snipe
 ;; Package-Requires: ((emacs "25.1") (evil "1.2.12") (cl-lib "0.5"))
 ;;
@@ -77,14 +77,14 @@ for repeating snipes."
 \='buffer
   Search rest of the buffer after the cursor (vim-sneak behavior)
 \='visible
-  Search rest of visible buffer (Is more performant than 'buffer, but will not
+  Search rest of visible buffer (Is more performant than \='buffer, but will not
   highlight/jump past the visible buffer)
 \='whole-line
-  Same as 'line, but highlight matches on either side of cursor
+  Same as \='line, but highlight matches on either side of cursor
 \='whole-buffer
-  Same as 'buffer, but highlight *all* matches in buffer
+  Same as \='buffer, but highlight *all* matches in buffer
 \='whole-visible
-  Same as 'visible, but highlight *all* visible matches in buffer
+  Same as \='visible, but highlight *all* visible matches in buffer
 
 See `evil-snipe-repeat-scope' to change scope only when repeating snipes.
 
@@ -175,7 +175,8 @@ MUST BE SET BEFORE EVIL-SNIPE IS LOADED.")
 
 (defcustom evil-snipe-skip-leading-whitespace t
   "If non-nil, single char sniping (f/F/t/T) will skip over leading whitespaces.
-(when you snipe for whitespace, e.g. f<space> or f<tab>)."
+It skips leading whitespaces when you snipe for whitespace,
+e.g. f<space> or f<tab>."
   :group 'evil-snipe
   :type 'boolean)
 
@@ -192,9 +193,9 @@ If nil, TAB will search for literal tab characters."
   "Non-nil to use `char-fold-to-regexp' to include ASCII variants search string.
 CURRENTLY EXPERIMENTAL.
 
-e.g. The letter \='a\=' will match all of its accented cousins, even those composed
-of multiple characters, as well as many other symbols like U+249C (PARENTHESIZED
-LATIN SMALL LETTER A).
+e.g. The letter \='a\=' will match all of its accented cousins, even those
+composed of multiple characters, as well as many other symbols like
+U+249C (PARENTHESIZED LATIN SMALL LETTER A).
 
 Only works in Emacs 25.1+."
   :group 'evil-snipe
@@ -211,6 +212,8 @@ Can be let-bound to create motions that search for N characters. Do not set
 directly, unless you want to change the default number of characters to
 search.")
 (defvar evil-snipe--transient-map-func nil)
+(defvar evil-snipe-keymap nil
+  "Keymap for transient state.")
 
 (defvar evil-snipe-parent-transient-map
   (let ((map (make-sparse-keymap)))
@@ -240,6 +243,7 @@ search.")
          (not (string-match-p "[A-Z]" (mapconcat #'cdr data ""))))))
 
 (defun evil-snipe--process-key (key)
+  "Process KEY to return a cons cell of keystr and its regexp."
   (let ((keystr (char-to-string key)))
     (cons keystr (cond ((car (cdr (assoc key evil-snipe-aliases))))
                        (evil-snipe-char-fold (char-fold-to-regexp keystr))
@@ -369,6 +373,9 @@ Goes backward if FORWARD-P is nil."
                          overlays)))))))
     overlays))
 
+(defvar evil-snipe-local-mode)
+(defvar evil-snipe-override-local-mode)
+
 (defun evil-snipe--cleanup ()
   "Disable overlays and clean up after evil-snipe."
   (when (or evil-snipe-local-mode evil-snipe-override-local-mode)
@@ -382,6 +389,7 @@ Goes backward if FORWARD-P is nil."
     (setq evil-snipe--transient-map-func nil)))
 
 (defun evil-snipe--transient-map (forward-key backward-key)
+  "Return a transient map with FORWARD-KEY and BACKWARD-KEY."
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map evil-snipe-parent-transient-map)
     (when evil-snipe-repeat-keys
@@ -392,8 +400,8 @@ Goes backward if FORWARD-P is nil."
 
 (defun evil-snipe-seek (count keys &optional keymap)
   "Perform a snipe with KEYS at COUNT intervals.
-KEYS is a list of characters provided by <-c> and <+c> interactive codes. KEYMAP
-is the transient map to activate afterwards."
+KEYS is a list of characters provided by <-c> and <+c> interactive codes.
+KEYMAP is the transient map to activate afterwards."
   (pcase keys
     (`abort (setq evil-inhibit-operator t))
     ;; if <enter>, repeat last search
@@ -407,15 +415,16 @@ is the transient map to activate afterwards."
      (let ((data (mapcar #'evil-snipe--process-key keys)))
        (let ((case-fold-search (evil-snipe--case-p data))
              (count (or count (if evil-snipe--last-direction 1 -1)))
-             (keymap (if (keymapp keymap) keymap)))
+             (evil-snipe-keymap (if (keymapp keymap) keymap)))
          (unless evil-snipe--last-repeat
-           (setq evil-snipe--last (list count keys keymap
+           (setq evil-snipe--last (list count keys evil-snipe-keymap
                                         evil-snipe--consume-match
                                         evil-snipe--match-count)))
          (evil-snipe--seek count data)
          (point))))))
 
 (defun evil-snipe--seek-re (data scope count)
+  "Search for DATA regex within SCOPE and COUNT."
   (let ((regex (mapconcat #'cdr data ""))
         result)
     (when (and evil-snipe-skip-leading-whitespace
@@ -429,7 +438,8 @@ is the transient map to activate afterwards."
         result))))
 
 (defun evil-snipe--seek (count data &optional internal-p)
-  "Perform a snipe and adjust cursor position depending on mode."
+  "Perform a snipe using COUNT and DATA, adjusting cursor position.
+INTERNAL-P is non-nil if this is an internal call."
   (let ((orig-point (point))
         (forward-p (> count 0)))
     ;; Adjust search starting point
@@ -476,10 +486,10 @@ is the transient map to activate afterwards."
                      (when evil-snipe-enable-highlight
                        (evil-snipe--highlight beg end t)))
                    ;; Activate the repeat keymap
-                   (when (and (boundp 'keymap) keymap)
+                   (when (and (boundp 'evil-snipe-keymap) evil-snipe-keymap)
                      (evil-snipe--disable-transient-map)
                      (setq evil-snipe--transient-map-func
-                           (set-transient-map keymap))))))
+                           (set-transient-map evil-snipe-keymap))))))
 
               ;; Try to "spill over" into new scope on failed search
               (evil-snipe-spillover-scope
@@ -491,10 +501,10 @@ is the transient map to activate afterwards."
               ;; If, at last, it fails...
               (t
                (goto-char orig-point)
-               (when (and evil-snipe--last-repeat (boundp 'keymap) keymap)
+               (when (and evil-snipe--last-repeat (boundp 'evil-snipe-keymap) evil-snipe-keymap)
                  (evil-snipe--disable-transient-map)
                  (setq evil-snipe--transient-map-func
-                       (set-transient-map keymap)))
+                       (set-transient-map evil-snipe-keymap)))
                (user-error "Can't find %s" ; show invisible keys
                            (replace-regexp-in-string
                             "\t" "<TAB>"
@@ -619,33 +629,35 @@ Including KEYS is a list of character codes.")
     map))
 
 ;;;###autoload
-(defun turn-on-evil-snipe-mode ()
-  "Enable evil-snipe-mode in the current buffer."
+(defun evil-snipe-turn-on-mode ()
+  "Enable `evil-snipe-mode' in the current buffer."
   (unless (apply #'derived-mode-p evil-snipe-disabled-modes)
     (evil-snipe-local-mode +1)))
 
 ;;;###autoload
-(defun turn-on-evil-snipe-override-mode ()
-  "Enable evil-snipe-mode in the current buffer."
+(defun evil-snipe-turn-on-override-mode ()
+  "Enable `evil-snipe-override-mode' in the current buffer."
   (unless (apply #'derived-mode-p evil-snipe-disabled-modes)
     (evil-snipe-override-local-mode +1)))
 
 ;;;###autoload
-(defun turn-off-evil-snipe-mode ()
+(defun evil-snipe-turn-off-mode ()
   "Disable `evil-snipe-local-mode' in the current buffer."
   (evil-snipe-local-mode -1))
 
 ;;;###autoload
-(defun turn-off-evil-snipe-override-mode ()
-  "Disable evil-snipe-override-mode in the current buffer."
+(defun evil-snipe-turn-off-override-mode ()
+  "Disable `evil-snipe-override-local-mode' in the current buffer."
   (evil-snipe-override-local-mode -1))
 
 (when (fboundp 'advice-add)
   (advice-add #'evil-force-normal-state :before #'evil-snipe--cleanup))
 (add-hook 'evil-insert-state-entry-hook #'evil-snipe--disable-transient-map)
 
-(defvar evil-snipe--keymaps-init nil)
+(defvar evil-snipe--keymaps-init nil
+  "Non-nil if keymaps are initialized.")
 (defun evil-snipe--normalize-keymaps ()
+  "Normalize keymaps."
   (unless evil-snipe--keymaps-init
     (set (make-local-variable 'evil-snipe--keymaps-init)
          (and (evil-normalize-keymaps) t))))
@@ -665,11 +677,11 @@ Including KEYS is a list of character codes.")
 
 ;;;###autoload
 (define-globalized-minor-mode evil-snipe-mode
-  evil-snipe-local-mode turn-on-evil-snipe-mode)
+  evil-snipe-local-mode evil-snipe-turn-on-mode)
 
 ;;;###autoload
 (define-globalized-minor-mode evil-snipe-override-mode
-  evil-snipe-override-local-mode turn-on-evil-snipe-override-mode)
+  evil-snipe-override-local-mode evil-snipe-turn-on-override-mode)
 
 (provide 'evil-snipe)
 ;;; evil-snipe.el ends here
